@@ -1,0 +1,342 @@
+/* 
+ * File:   main.cpp
+ * Author: auswise
+ *
+ * Created on January 12, 2016, 3:56 PM
+ */
+
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
+#include <GL/gl.h>
+#include <GL/glu.h>
+#include <GL/glut.h>
+#include <math.h>
+
+using namespace std;
+
+int width;
+int height;
+
+double ** vertices;
+int** triangles;
+int * parts;
+float ** colors;
+float ** params;
+
+double** triangle_normals;
+double** vertex_normals;
+
+float* lightPosition;
+
+double * p0;
+double * pt;
+double an;
+
+int triangles_length;
+int vertices_length;
+
+double t = 0;
+
+void reshape(int w, int h);
+void keyboard(unsigned char key, int x, int y);
+void mouse(int btn, int state, int x, int y);
+void idle();
+void display();
+void createScene();
+void drawScene();
+void load();
+void loadScene(const char* path);
+void loadCamera(const char* path);
+double length(double* x);
+double* add(double* v, double* s);
+double* sub(double* v, double* s);
+double* cross(double* v, double* s);
+double* normalize(double* v);
+
+/*
+ * 
+ */
+
+
+
+double* curve(double t){
+    double a = 2;
+    double b = 0.1;
+    
+    double x = a*cos(t);
+    double y = b*t;
+    double z = a*sin(t);
+    
+    double* vector = new double[3];
+    vector[0] = x;
+    vector[1] = y;
+    vector[2] = z;
+    return vector;
+}
+
+int main(int argc, char** argv) {
+
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB | GLUT_DEPTH);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Nazwa okna");
+    load();
+    
+    
+    
+    glutReshapeFunc(&reshape);
+    glutDisplayFunc(&display);
+    glutIdleFunc(&idle);
+    glutMouseFunc(&mouse);
+    glutKeyboardFunc(&keyboard);
+    glutMainLoop();
+
+    return 0;
+}
+
+void reshape(int w, int h) {
+    width = w;
+    height = h;
+    return;
+}
+
+void keyboard(unsigned char key, int x, int y) {
+    
+    if(key==GLUT_KEY_LEFT)
+        t-=0.1;
+    
+    if(key==GLUT_KEY_RIGHT)
+        t+=0.1;
+    
+    p0 = curve(t);
+    glutPostRedisplay();
+    return;
+}
+
+void mouse(int btn, int state, int x, int y) {
+    return;
+}
+
+void idle() {
+    return;
+}
+
+void display() {
+    triangle_normals = new double*[triangles_length];
+    for (int it = 0; it < triangles_length; it++){
+        triangle_normals[it] = cross(sub(vertices[triangles[it][1]], vertices[triangles[it][0]]), sub(vertices[triangles[it][2]], vertices[triangles[it][1]]));
+        triangle_normals[it] = normalize(triangle_normals[it]);
+    }
+    
+    vertex_normals = new double*[vertices_length];
+    for(int it=0;it<vertices_length;it++){
+        vertex_normals[it] = new double[3];
+        vertex_normals[it][0] = 0;
+        vertex_normals[it][1] = 0;
+        vertex_normals[it][2] = 0;
+    }
+    
+    for (int it = 0; it < triangles_length; it++){
+        vertex_normals[triangles[it][0]] = add(vertex_normals[triangles[it][0]], triangle_normals[it]);
+        vertex_normals[triangles[it][1]] = add(vertex_normals[triangles[it][1]], triangle_normals[it]);
+        vertex_normals[triangles[it][2]] = add(vertex_normals[triangles[it][2]], triangle_normals[it]);
+    }
+    
+    for(int it=0;it<vertices_length;it++)
+        vertex_normals[it] = normalize(vertex_normals[it]);
+        
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glLightModelf(GL_LIGHT_MODEL_LOCAL_VIEWER, 1);
+    glEnable(GL_LIGHT0);
+    
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(an, 1, 0.1, 1000);
+    gluLookAt(p0[0], p0[1], p0[2], 
+            pt[0], pt[1], pt[2], 
+            0, 1, 0);
+    
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+    glEnable( GL_RESCALE_NORMAL );
+    glEnable(GL_COLOR_MATERIAL);
+    
+    glShadeModel(GL_SMOOTH);
+
+    
+    glMatrixMode(GL_MODELVIEW);
+    for (int it = 0; it < triangles_length; it++) {
+        
+        glBegin(GL_TRIANGLES);
+        glColor3d(colors[parts[it]][0], colors[parts[it]][1], colors[parts[it]][2]);
+
+        float materialDiffuse[4] = {params[parts[it]][0], params[parts[it]][0] ,params[parts[it]][0] ,1};
+        float materialSpecular[4] = {params[parts[it]][1], params[parts[it]][1] ,params[parts[it]][1] ,1};
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, materialDiffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, materialSpecular);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, params[parts[it]][2]);
+//        cout << params[parts[it]][2] << endl;
+        
+//        glNormal3d(triangle_normals[it][0], triangle_normals[it][1], triangle_normals[it][2]);
+        glNormal3d(vertex_normals[triangles[it][0]][0], vertex_normals[triangles[it][0]][1], vertex_normals[triangles[it][0]][2]);
+        glVertex3d(vertices[triangles[it][0]][0], vertices[triangles[it][0]][1], vertices[triangles[it][0]][2]);
+        glNormal3d(vertex_normals[triangles[it][1]][0], vertex_normals[triangles[it][1]][1], vertex_normals[triangles[it][1]][2]);
+        glVertex3d(vertices[triangles[it][1]][0], vertices[triangles[it][1]][1], vertices[triangles[it][1]][2]);
+        glNormal3d(vertex_normals[triangles[it][2]][0], vertex_normals[triangles[it][2]][1], vertex_normals[triangles[it][2]][2]);
+        glVertex3d(vertices[triangles[it][2]][0], vertices[triangles[it][2]][1], vertices[triangles[it][2]][2]);
+
+        glEnd();
+    }
+    
+    glFlush();
+
+    return;
+}
+
+
+void load() {
+    loadScene("/home/auswise/sceny/model1.brp");
+    loadCamera("/home/auswise/model1.cam");
+    
+    cout << p0[0] << " " << p0[1] << " " << p0[2] <<endl;
+    cout << pt[0] << " " << pt[1] << " " << pt[2] <<endl;
+    
+}
+
+void loadScene(const char* path) {
+    ifstream file;
+    file.open(path);
+
+    int n;
+    file >> n;
+
+    vertices_length = n;
+    vertices = new double* [vertices_length];
+    for (int it = 0; it < n; it++) {
+        vertices[it] = new double[3];
+        file >> vertices[it][0];
+        file >> vertices[it][1];
+        file >> vertices[it][2];
+    }
+
+    file >> n;
+    triangles_length = n;
+    triangles = new int*[triangles_length];
+    for (int it = 0; it < n; it++) {
+        triangles[it] = new int[3];
+        file >> triangles[it][0];
+        file >> triangles[it][1];
+        file >> triangles[it][2];
+    }
+    
+
+    int p;
+    parts = new int[n];
+    for (int it = 0; it < n; it++) {
+        file >> parts[it];
+    }
+
+    file >> n;
+
+    colors = new float* [n];
+    params = new float* [n];
+    for (int it = 0; it < n; it++) {
+        colors[it] = new float[3];
+        params[it] = new float[3];
+        file >> colors[it][0];
+        colors[it][0] = colors[it][0]/255;
+        file >> colors[it][1];
+        colors[it][1] = colors[it][1]/255;
+        file >> colors[it][2];
+        colors[it][2] = colors[it][2]/255;
+        file >> params[it][0];
+        file >> params[it][1];
+        file >> params[it][2];
+    }
+
+    lightPosition = new float[4];
+    file >> lightPosition[0];
+    file >> lightPosition[1];
+    file >> lightPosition[2];
+    lightPosition[3] = 1;
+
+    file.close();
+}
+
+void loadCamera(const char* path) {
+    ifstream file;
+    file.open(path);
+    p0 = new double[3];
+    pt = new double[3];
+
+    file >> p0[0];
+    file >> p0[1];
+    file >> p0[2];
+
+    file >> pt[0];
+    file >> pt[1];
+    file >> pt[2];
+
+    file >> an;
+
+    return;
+}
+
+double length(double* x) {
+    double length = 0;
+    for (int i = 0; i < 3; i++)
+        length += x[i] * x[i];
+
+    length = sqrt(length);
+    return length;
+}
+
+double* add(double* v, double* s) {
+    double* t = new double[3];
+    for (int i = 0; i < 3; i++)
+        t[i] = v[i] + s[i];
+
+    return t;
+}
+
+double* sub(double* v, double* s) {
+    double* t = new double[3];
+    for (int i = 0; i < 3; i++)
+        t[i] = v[i] - s[i];
+
+    return t;
+}
+
+double* cross(double* v, double* s) {
+    double ax = v[0];
+    double ay = v[1];
+    double az = v[2];
+    double bx = s[0];
+    double by = s[1];
+    double bz = s[2];
+
+    double* cross = new double[3];
+    cross[0] = ay * bz - az*by;
+    cross[1] = az * bx - ax*bz;
+    cross[2] = ax * by - ay * bx;
+    
+    return  cross;
+}
+
+double* normalize(double* v) {
+    double _length = length(v);
+   
+    double* s = new double[3];
+    s[0] = v[0]/_length;
+    s[1] = v[1]/_length;
+    s[2] = v[2]/_length;
+    
+    return s;
+}
+
